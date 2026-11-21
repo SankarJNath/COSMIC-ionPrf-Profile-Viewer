@@ -12,9 +12,8 @@ install.
 **Double-click `index.html`** (Chrome / Edge / Firefox). Plotly and SheetJS are
 vendored in `lib/`, so it works fully offline.
 
-1. Click **Open folder…** and choose a directory of `ionPrf_*` files — or
-   **Files…** to pick individual files. A demo set is included in
-   [`sample_data/`](sample_data/).
+1. Click **Open folder…** and choose a directory of your `ionPrf_*` files — or
+   **Files…** to pick individual files.
 2. Occultations are listed by **time** and **satellite** (PRN). Filter
    (`G11`, `03:`, …) or step with **Prev/Next** (↑/↓ keys).
 3. Switch tabs to explore each profile.
@@ -62,12 +61,11 @@ All plots are interactive (zoom, pan, hover).
 | `netcdf3.js` | Self-contained classic NetCDF-3 reader (no dependencies) |
 | `dpi-export.js` | PNG `pHYs` / JPEG JFIF DPI-metadata writer |
 | `lib/plotly.min.js`, `lib/xlsx.full.min.js` | Vendored libraries (offline) |
-| `sample_data/` | Six demo `ionPrf` files (incl. one with negative-density samples) |
 | `COSMIC_ionPrf_file_documentation.md` | Technical description of the ionPrf product |
 
 ## Data source
 
 ionPrf products are distributed by **UCAR/CDAAC**
-(<https://cdaac-www.cosmic.ucar.edu/>). Only a small demo subset is included
-here; download full datasets from CDAAC. This viewer is an independent tool and
-is not affiliated with or endorsed by UCAR/CDAAC.
+(<https://cdaac-www.cosmic.ucar.edu/>). No data is bundled with this tool — load
+your own ionPrf files from CDAAC. This viewer is independent and is not
+affiliated with or endorsed by UCAR/CDAAC.
