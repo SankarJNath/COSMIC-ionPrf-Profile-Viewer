@@ -421,7 +421,7 @@
     var lay = layout('Electron Density Profile', 'Electron density (el/cm³)', 'MSL altitude (km)');
     if (log) lay.xaxis.type = 'log';
     lay.showlegend = o.edMarkPeak;
-    lay.legend = { x: 0.98, y: 0.02, xanchor: 'right', yanchor: 'bottom', bgcolor: 'rgba(255,255,255,0.7)' };
+    lay.legend = { x: 0.98, y: 0.02, xanchor: 'right', yanchor: 'bottom', bgcolor: 'rgba(255,255,255,0.7)', font: { weight: 'bold' } };
     Plotly.react(els.plot, traces, lay, PLOT_CONFIG);
 
     var s = stats(state.raw.ed);
@@ -625,7 +625,7 @@
     if (o.cmpScale === 'log') lay.xaxis.type = 'log';
     lay.showlegend = true;
     lay.legend = { x: 0.98, y: 0.02, xanchor: 'right', yanchor: 'bottom',
-                   bgcolor: 'rgba(255,255,255,0.78)', bordercolor: '#ccc', borderwidth: 1, font: { size: 11 } };
+                   bgcolor: 'rgba(255,255,255,0.78)', bordercolor: '#ccc', borderwidth: 1, font: { size: 11, weight: 'bold' } };
     Plotly.react(els.plot, traces, lay, PLOT_CONFIG);
 
     if (!state.compare.length) {
