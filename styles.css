@@ -194,6 +194,7 @@ table.data tr:hover td { background: #f6f9fc; }
 .cmp-row .cmp-rm:hover { color: var(--warn); }
 .cmp-empty { grid-column: 1 / -1; color: var(--muted); font-size: 13px; padding: 10px 0; }
 .controls button.cmp-btn { padding: 5px 10px; }
+.controls input.mini { width: 58px; padding: 4px 6px; font-variant-numeric: tabular-nums; }
 
 /* ---- About ---- */
 .about-panel { max-width: 720px; }

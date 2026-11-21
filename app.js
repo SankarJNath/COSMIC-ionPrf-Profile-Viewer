@@ -35,7 +35,8 @@
     stamp: '',
     view: 'edens',
     opts: { edScale: 'linear', edMaskNonPos: true, edMarkPeak: true, tecScale: 'linear',
-            cmpVar: 'ed', cmpScale: 'linear' },
+            cmpVar: 'ed', cmpScale: 'linear', cmpSmooth: false, cmpWidth: 1.5,
+            cmpAltMin: '', cmpAltMax: '' },
     baseW: 760, baseH: 600,
     compare: [], // [{name,file,time,prn,lat,lon,color,data:{alt,ed,tec},attrs,label}]
   };
@@ -338,6 +339,12 @@
     els.dlCsvBtn.disabled = !hasData;
     els.exportHint.textContent = hasData ? ('File: ' + state.stamp) : '';
 
+    // Single-profile plots read better as a portrait panel; wide/2-panel views stay full width.
+    var narrow = (v === 'edens' || v === 'tec' || v === 'azi' || v === 'compare');
+    els.plot.style.maxWidth = narrow ? '720px' : '';
+    els.plot.style.margin = narrow ? '0 auto' : '';
+    els.plot.style.height = narrow ? '680px' : '560px';
+
     if (v === 'about') { renderAbout(); return; }
     if (!hasData) return;
     if (v === 'edens') renderEdens();
@@ -387,7 +394,7 @@
 
   // ----- Electron density -----
   function renderEdens() {
-    state.baseW = 760; state.baseH = 600;
+    state.baseW = 720; state.baseH = 720;
     setControls(
       '<div class="group"><label>X scale</label>' +
       '<select id="edScale"><option value="linear">Linear</option><option value="log">Log</option></select></div>' +
@@ -437,7 +444,7 @@
 
   // ----- TEC -----
   function renderTec() {
-    state.baseW = 720; state.baseH = 600;
+    state.baseW = 700; state.baseH = 720;
     setControls('<div class="group"><label>X scale</label>' +
       '<select id="tecScale"><option value="linear">Linear</option><option value="log">Log</option></select></div>');
     $('tecScale').value = state.opts.tecScale;
@@ -486,7 +493,7 @@
 
   // ----- Azimuth -----
   function renderAzi() {
-    state.baseW = 720; state.baseH = 600;
+    state.baseW = 700; state.baseH = 720;
     setControls('');
     var lay = layout('Occultation-Plane Azimuth vs Altitude', 'Azimuth w.r.t. north (°)', 'MSL altitude (km)');
     Plotly.react(els.plot, [{
@@ -592,25 +599,39 @@
   function clearCompare() { state.compare = []; renderCompare(); }
 
   function renderCompare() {
-    state.baseW = 780; state.baseH = 600;
+    state.baseW = 740; state.baseH = 720;
     var o = state.opts;
     setControls(
       '<div class="group"><label>Variable</label>' +
       '<select id="cmpVar"><option value="ed">Electron density</option><option value="tec">TEC</option></select></div>' +
       '<div class="group"><label>X scale</label>' +
       '<select id="cmpScale"><option value="linear">Linear</option><option value="log">Log</option></select></div>' +
+      '<label title="Display aid only: draws spline curves between samples. The data is unchanged and the curve may not be exact between points.">' +
+      '<input type="checkbox" id="cmpSmooth"> Smooth</label>' +
+      '<div class="group"><label>Line</label><select id="cmpWidth">' +
+      '<option value="1">thin</option><option value="1.5">medium</option><option value="2.5">thick</option></select></div>' +
+      '<div class="group"><label>Alt range</label>' +
+      '<input id="cmpAltMin" class="mini" type="number" placeholder="min"> ' +
+      '<input id="cmpAltMax" class="mini" type="number" placeholder="max"> km</div>' +
       '<button id="cmpAdd" class="cmp-btn">+ Add current</button>' +
       '<button id="cmpAddAll" class="cmp-btn">+ Add all filtered (' + state.filtered.length + ')</button>' +
       '<button id="cmpClear" class="cmp-btn">Clear all</button>');
     $('cmpVar').value = o.cmpVar; $('cmpScale').value = o.cmpScale;
+    $('cmpSmooth').checked = o.cmpSmooth; $('cmpWidth').value = String(o.cmpWidth);
+    $('cmpAltMin').value = o.cmpAltMin; $('cmpAltMax').value = o.cmpAltMax;
     $('cmpVar').addEventListener('change', function () { o.cmpVar = this.value; renderCompare(); });
     $('cmpScale').addEventListener('change', function () { o.cmpScale = this.value; renderCompare(); });
+    $('cmpSmooth').addEventListener('change', function () { o.cmpSmooth = this.checked; renderCompare(); });
+    $('cmpWidth').addEventListener('change', function () { o.cmpWidth = parseFloat(this.value); renderCompare(); });
+    $('cmpAltMin').addEventListener('input', function () { o.cmpAltMin = this.value; applyCompareY(); });
+    $('cmpAltMax').addEventListener('input', function () { o.cmpAltMax = this.value; applyCompareY(); });
     $('cmpAdd').addEventListener('click', addCurrentToCompare);
     $('cmpAddAll').addEventListener('click', addAllFiltered);
     $('cmpClear').addEventListener('click', clearCompare);
 
     var vkey = o.cmpVar;
     var vlabel = vkey === 'ed' ? 'Electron density (el/cm³)' : 'TEC (TECU)';
+    var shape = o.cmpSmooth ? 'spline' : 'linear';
     var traces = state.compare.filter(function (e) { return e.data; }).map(function (e) {
       var x = e.data[vkey];
       if (vkey === 'ed') { // hide non-physical (<=0) densities so the overlay stays readable
@@ -619,7 +640,7 @@
         x = m;
       }
       return { x: x, y: e.data.alt, mode: 'lines', type: 'scatter', name: e.label,
-               line: { color: e.color, width: 1.5 },
+               line: { color: e.color, width: o.cmpWidth, shape: shape, smoothing: o.cmpSmooth ? 1.0 : 0 },
                hovertemplate: '%{x:.3s}<br>%{y:.1f} km<extra>' + e.label + '</extra>' };
     });
     var day = '';
@@ -627,6 +648,8 @@
     if (first && first.attrs) { var a = first.attrs; day = ' — ' + a.year + '-' + pad2(a.month) + '-' + pad2(a.day); }
     var lay = layout('Overlaid ' + (vkey === 'ed' ? 'Electron-Density' : 'TEC') + ' Profiles' + day, vlabel, 'MSL altitude (km)');
     if (o.cmpScale === 'log') lay.xaxis.type = 'log';
+    var aLo = parseFloat(o.cmpAltMin), aHi = parseFloat(o.cmpAltMax);
+    if (isFinite(aLo) && isFinite(aHi)) { lay.yaxis.range = [aLo, aHi]; lay.yaxis.autorange = false; }
     lay.showlegend = true;
     lay.legend = { x: 0.98, y: 0.02, xanchor: 'right', yanchor: 'bottom',
                    bgcolor: 'rgba(255,255,255,0.78)', bordercolor: '#ccc', borderwidth: 1, font: { size: 11, weight: 'bold' } };
@@ -644,7 +667,8 @@
     }
     els.statline.textContent = state.compare.length + ' profile(s) overlaid' +
       (state.compare.length ? '  —  colour swatches below are editable' : '') +
-      (state.compare.length && vkey === 'ed' ? '  ·  non-positive Ne hidden' : '');
+      (state.compare.length && vkey === 'ed' ? '  ·  non-positive Ne hidden' : '') +
+      (state.compare.length && o.cmpSmooth ? '  ·  smoothed (display only)' : '');
   }
 
   // Colour change / removal (delegated; list DOM is rebuilt on structural change)
@@ -662,6 +686,11 @@
     // update line colours in place without rebuilding the list (keeps picker open)
     var colors = state.compare.filter(function (e) { return e.data; }).map(function (e) { return e.color; });
     Plotly.restyle(els.plot, { 'line.color': colors });
+  }
+  function applyCompareY() {
+    var lo = parseFloat(state.opts.cmpAltMin), hi = parseFloat(state.opts.cmpAltMax);
+    if (isFinite(lo) && isFinite(hi)) Plotly.relayout(els.plot, { 'yaxis.range': [lo, hi], 'yaxis.autorange': false });
+    else Plotly.relayout(els.plot, { 'yaxis.autorange': true });
   }
 
   // ----- Metadata -----
