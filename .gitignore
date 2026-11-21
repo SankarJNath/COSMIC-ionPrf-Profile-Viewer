@@ -1,0 +1,18 @@
+# Full COSMIC ionPrf dataset (bulk data — not code). Keep it out of the repo;
+# a small demo subset lives in sample_data/.
+/ionPrf_prov1_2021_308/
+
+# Node / tooling
+node_modules/
+
+# OS / editor cruft
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+
+# Scratch / exported artifacts
+_*.json
+*.xlsx
+*.csv
+# ...but keep nothing-tracked exceptions below if needed

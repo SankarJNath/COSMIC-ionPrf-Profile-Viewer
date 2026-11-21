@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>COSMIC ionPrf Profile Viewer</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>COSMIC ionPrf Profile Viewer</h1>
+    <div class="sub">GPS Radio-Occultation ionospheric profiles (UCAR/CDAAC ionPrf, NetCDF-3)</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="filecount" id="fileCount"></div>
+</header>
+
+<div class="layout">
+  <!-- ---------- Sidebar ---------- -->
+  <aside>
+    <div class="side-section">
+      <h2>Data source</h2>
+      <div class="folder-row">
+        <button id="openFolderBtn" class="primary">Open folder…</button>
+        <button id="openFilesBtn" title="Select one or more .nc files">Files…</button>
+      </div>
+      <!-- Hidden inputs -->
+      <input id="folderInput" type="file" webkitdirectory directory multiple class="hidden" />
+      <input id="filesInput" type="file" multiple class="hidden" />
+      <div id="folderName" class="statline"></div>
+    </div>
+
+    <div class="side-section">
+      <h2>Occultations</h2>
+      <input id="filterBox" type="text" placeholder="Filter by time / satellite (e.g. G11, 03:)" />
+      <div class="nav-row">
+        <button id="prevBtn" disabled>&larr; Prev</button>
+        <button id="nextBtn" disabled>Next &rarr;</button>
+      </div>
+    </div>
+
+    <div class="filelist" id="fileList">
+      <div class="empty">No folder loaded yet.</div>
+    </div>
+  </aside>
+
+  <!-- ---------- Main ---------- -->
+  <main>
+    <div class="tabbar" id="tabbar">
+      <div class="tab active" data-view="edens">Electron density</div>
+      <div class="tab" data-view="tec">TEC</div>
+      <div class="tab" data-view="latlon">Latitude &amp; longitude</div>
+      <div class="tab" data-view="azi">Azimuth</div>
+      <div class="tab" data-view="geo">Geographic map</div>
+      <div class="tab" data-view="meta">Metadata</div>
+      <div class="tab" data-view="table">Data table</div>
+    </div>
+
+    <div class="content" id="content">
+      <!-- Welcome state -->
+      <div class="welcome" id="welcome">
+        <h2>Load a folder of ionPrf files to begin</h2>
+        <ol>
+          <li>Click <strong>Open folder…</strong> and choose a directory of COSMIC
+              <code>ionPrf_*</code> NetCDF files (e.g. <code>ionPrf_prov1_2021_308</code>).</li>
+          <li>Pick an occultation from the list on the left.</li>
+          <li>Switch tabs to view each profile, then export figures (PNG/JPG at
+              300/600/1000&nbsp;DPI) or the data to Excel.</li>
+        </ol>
+        <p class="muted">Everything runs locally in your browser — no files are uploaded.
+          Negative or <code>&minus;999</code> fill values are flagged, not silently plotted.</p>
+      </div>
+
+      <!-- Plot / table host (populated by app.js) -->
+      <div id="viewHost" class="hidden">
+        <div class="controls" id="controls"></div>
+        <div id="plot"></div>
+        <p class="statline" id="statline"></p>
+        <div class="table-wrap hidden" id="tableWrap"></div>
+        <div class="meta-grid hidden" id="metaGrid"></div>
+
+        <div class="exportbar" id="exportbar">
+          <div class="group">
+            <strong style="font-size:12.5px">Export figure:</strong>
+            <label>DPI
+              <select id="dpiSel">
+                <option value="300">300</option>
+                <option value="600">600</option>
+                <option value="1000">1000</option>
+              </select>
+            </label>
+            <label>Format
+              <select id="fmtSel">
+                <option value="png">PNG</option>
+                <option value="jpeg">JPG</option>
+              </select>
+            </label>
+            <button id="dlImgBtn">Download image</button>
+          </div>
+          <div class="sep"></div>
+          <div class="group">
+            <strong style="font-size:12.5px">Export data:</strong>
+            <button id="dlXlsxBtn">Excel (.xlsx)</button>
+            <button id="dlCsvBtn">CSV</button>
+          </div>
+          <div class="hint" id="exportHint"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Vendored libraries (offline) -->
+<script src="lib/plotly.min.js"></script>
+<script src="lib/xlsx.full.min.js"></script>
+<!-- App modules -->
+<script src="netcdf3.js"></script>
+<script src="dpi-export.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
