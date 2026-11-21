@@ -168,7 +168,11 @@
   // ---------- Filtering (text + geographic) ----------
   function geoBounds() {
     function num(el) { var v = parseFloat(el.value); return isFinite(v) ? v : null; }
-    return { latMin: num(els.latMin), latMax: num(els.latMax), lonMin: num(els.lonMin), lonMax: num(els.lonMax) };
+    var latMin = num(els.latMin), latMax = num(els.latMax), lonMin = num(els.lonMin), lonMax = num(els.lonMax);
+    // Tolerate swapped entries: interpret the two numbers as a range either way.
+    if (latMin != null && latMax != null && latMin > latMax) { var tl = latMin; latMin = latMax; latMax = tl; }
+    if (lonMin != null && lonMax != null && lonMin > lonMax) { var to = lonMin; lonMin = lonMax; lonMax = to; }
+    return { latMin: latMin, latMax: latMax, lonMin: lonMin, lonMax: lonMax };
   }
   function geoActive() { var g = geoBounds(); return g.latMin != null || g.latMax != null || g.lonMin != null || g.lonMax != null; }
 
