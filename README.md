@@ -7,6 +7,10 @@ install.
 
 ![Electron-density view](docs/screenshot_edens.png)
 
+Overlay multiple same-day profiles, each in a colour you choose:
+
+![Compare / overlay view](docs/screenshot_compare.png)
+
 ## Run it
 
 **Double-click `index.html`** (Chrome / Edge / Firefox). Plotly and SheetJS are
@@ -14,8 +18,10 @@ vendored in `lib/`, so it works fully offline.
 
 1. Click **Open folder…** and choose a directory of your `ionPrf_*` files — or
    **Files…** to pick individual files.
-2. Occultations are listed by **time** and **satellite** (PRN). Filter
-   (`G11`, `03:`, …) or step with **Prev/Next** (↑/↓ keys).
+2. Occultations are listed by **time** and **satellite** (PRN). Narrow the list
+   by text (`G11`, `03:`, …), by **latitude/longitude range** (the viewer indexes
+   each file's peak location in the background), or step with **Prev/Next**
+   (↑/↓ keys).
 3. Switch tabs to explore each profile.
 
 ## Views
@@ -27,8 +33,10 @@ vendored in `lib/`, so it works fully offline.
 | **Latitude & longitude** | `GEO_lat` and `GEO_lon` perigee-point coordinates vs altitude, side by side. |
 | **Azimuth** | `OCC_azi` (occultation-plane azimuth w.r.t. north) vs altitude. |
 | **Geographic map** | Perigee-point track on a coastline map, coloured by altitude, with the edmax point marked. |
+| **Compare profiles** | Overlay many same-day profiles (electron density or TEC) on one plot, each in a distinct **user-chosen colour**, with a legend labelled by latitude/longitude and time. Build a group with the lat/lon filter then **Add all filtered**, or **Add current** one at a time; click any swatch to recolour. Exports at 300/600/1000 DPI like every other view. |
 | **Metadata** | Observation time, satellite IDs, edmax & location, critical frequency, TEC params, endpoints, processing/provenance, and computed per-variable statistics. |
 | **Data table** | All rows, raw values; `−999` fill values flagged in colour. |
+| **About** | Tool description, author, repository and data-source links. |
 
 All plots are interactive (zoom, pan, hover).
 

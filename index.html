@@ -35,6 +35,19 @@
     <div class="side-section">
       <h2>Occultations</h2>
       <input id="filterBox" type="text" placeholder="Filter by time / satellite (e.g. G11, 03:)" />
+      <div class="geofilter">
+        <div class="gf-row"><span>Lat</span>
+          <input id="latMin" type="number" step="any" inputmode="decimal" placeholder="min °N" />
+          <input id="latMax" type="number" step="any" inputmode="decimal" placeholder="max °N" /></div>
+        <div class="gf-row"><span>Lon</span>
+          <input id="lonMin" type="number" step="any" inputmode="decimal" placeholder="min °E" />
+          <input id="lonMax" type="number" step="any" inputmode="decimal" placeholder="max °E" /></div>
+        <div class="gf-foot">
+          <span class="gf-hint">by profile peak location</span>
+          <button id="geoClear" type="button">Clear</button>
+        </div>
+      </div>
+      <div id="indexStatus" class="statline"></div>
       <div class="nav-row">
         <button id="prevBtn" disabled>&larr; Prev</button>
         <button id="nextBtn" disabled>Next &rarr;</button>
@@ -54,8 +67,10 @@
       <div class="tab" data-view="latlon">Latitude &amp; longitude</div>
       <div class="tab" data-view="azi">Azimuth</div>
       <div class="tab" data-view="geo">Geographic map</div>
+      <div class="tab" data-view="compare">Compare profiles</div>
       <div class="tab" data-view="meta">Metadata</div>
       <div class="tab" data-view="table">Data table</div>
+      <div class="tab" data-view="about">About</div>
     </div>
 
     <div class="content" id="content">
@@ -78,8 +93,10 @@
         <div class="controls" id="controls"></div>
         <div id="plot"></div>
         <p class="statline" id="statline"></p>
+        <div class="compare-list hidden" id="compareList"></div>
         <div class="table-wrap hidden" id="tableWrap"></div>
         <div class="meta-grid hidden" id="metaGrid"></div>
+        <div class="about-panel hidden" id="aboutPanel"></div>
 
         <div class="exportbar" id="exportbar">
           <div class="group">

@@ -34,8 +34,10 @@
     attrs: null,
     stamp: '',
     view: 'edens',
-    opts: { edScale: 'linear', edMaskNonPos: true, edMarkPeak: true, tecScale: 'linear' },
+    opts: { edScale: 'linear', edMaskNonPos: true, edMarkPeak: true, tecScale: 'linear',
+            cmpVar: 'ed', cmpScale: 'linear' },
     baseW: 760, baseH: 600,
+    compare: [], // [{name,file,time,prn,lat,lon,color,data:{alt,ed,tec},attrs,label}]
   };
 
   // ---------- DOM ----------
@@ -44,7 +46,13 @@
   ['openFolderBtn','openFilesBtn','folderInput','filesInput','folderName','fileCount',
    'filterBox','prevBtn','nextBtn','fileList','welcome','viewHost','controls','plot',
    'statline','tableWrap','metaGrid','exportbar','dpiSel','fmtSel','dlImgBtn',
-   'dlXlsxBtn','dlCsvBtn','exportHint','tabbar'].forEach(function (id) { els[id] = $(id); });
+   'dlXlsxBtn','dlCsvBtn','exportHint','tabbar','latMin','latMax','lonMin','lonMax',
+   'geoClear','indexStatus','aboutPanel','compareList'].forEach(function (id) { els[id] = $(id); });
+
+  // Qualitative palette for overlays (blue/black/red/green first, matching the
+  // common quiet/disturbed-day convention), then more distinct hues.
+  var PALETTE = ['#1f5fae', '#000000', '#d62728', '#2e7d32', '#ff7f0e', '#6a3d9a',
+                 '#17becf', '#8c564b', '#e377c2', '#bcbd22', '#7f7f7f', '#1b9e77'];
 
   // ---------- Filename parsing ----------
   function parseName(name) {
@@ -79,11 +87,19 @@
     state.filtered = arr.slice();
     state.currentIndex = -1;
     els.folderName.textContent = label + ' — ' + arr.length + ' files';
-    els.fileCount.textContent = arr.length + ' occultations loaded';
     els.filterBox.value = '';
+    [els.latMin, els.latMax, els.lonMin, els.lonMax].forEach(function (i) { i.value = ''; });
+    updateCount();
     renderFileList();
     // auto-select first
     selectIndex(0);
+    // index perigee-point locations in the background so the lat/lon filter works
+    indexLocations(arr);
+  }
+
+  function updateCount() {
+    var n = state.filtered.length, t = state.allFiles.length;
+    els.fileCount.textContent = (n === t) ? (t + ' occultations loaded') : (n + ' of ' + t + ' occultations');
   }
 
   els.openFolderBtn.addEventListener('click', function () { els.folderInput.click(); });
@@ -96,6 +112,99 @@
   });
   els.filesInput.addEventListener('change', function (e) { ingest(e.target.files, 'Selected files'); });
 
+  // ---------- Location indexing (powers the lat/lon filter) ----------
+  // Lat/lon live inside each NetCDF file, not in the filename, so we read each
+  // file's peak/endpoint location from its attributes in the background.
+  var indexGen = 0;
+  function validLat(x) { return isFinite(x) && Math.abs(x - FILL) > 1e-3 && x >= -90 && x <= 90; }
+  function validLon(x) { return isFinite(x) && Math.abs(x - FILL) > 1e-3 && x >= -180 && x <= 180; }
+  function pick(cands, ok) { for (var i = 0; i < cands.length; i++) if (ok(cands[i])) return cands[i]; return null; }
+
+  function indexLocations(items) {
+    var gen = ++indexGen, total = items.length, done = 0, next = 0, CONC = 16;
+    setIndexStatus(done, total);
+    function worker() {
+      return new Promise(function (resolve) {
+        function after() {
+          if (gen !== indexGen) return resolve();
+          if (done % 100 === 0 || done === total) {
+            setIndexStatus(done, total);
+            if (geoActive()) applyFilter(true);
+          }
+          if (done % 250 === 0) setTimeout(step, 0); else step();
+        }
+        function step() {
+          if (gen !== indexGen) return resolve();
+          var i = next++;
+          if (i >= total) return resolve();
+          var it = items[i];
+          it.file.arrayBuffer().then(function (ab) {
+            try {
+              var a = NetCDF3.parse(ab).attributes;
+              it.lat = pick([a.edmaxlat, a.botlat, a.toplat], validLat);
+              it.lon = pick([a.edmaxlon, a.botlon, a.toplon], validLon);
+            } catch (e) { it.lat = null; it.lon = null; }
+            done++; after();
+          }, function () { it.lat = null; it.lon = null; done++; after(); });
+        }
+        step();
+      });
+    }
+    var ws = [];
+    for (var w = 0; w < CONC; w++) ws.push(worker());
+    Promise.all(ws).then(function () {
+      if (gen !== indexGen) return;
+      setIndexStatus(total, total);
+      if (geoActive()) applyFilter(true);
+      else renderFileList(); // refresh location tooltips now that indexing is done
+    });
+  }
+  function setIndexStatus(done, total) {
+    els.indexStatus.textContent = done < total
+      ? ('Indexing locations… ' + done + '/' + total)
+      : ('Locations indexed (' + total + ')');
+  }
+
+  // ---------- Filtering (text + geographic) ----------
+  function geoBounds() {
+    function num(el) { var v = parseFloat(el.value); return isFinite(v) ? v : null; }
+    return { latMin: num(els.latMin), latMax: num(els.latMax), lonMin: num(els.lonMin), lonMax: num(els.lonMax) };
+  }
+  function geoActive() { var g = geoBounds(); return g.latMin != null || g.latMax != null || g.lonMin != null || g.lonMax != null; }
+
+  function applyFilter(keepSel) {
+    var tokens = els.filterBox.value.trim().toLowerCase();
+    tokens = tokens ? tokens.split(/\s+/) : [];
+    var g = geoBounds(), gActive = geoActive();
+    var prevName = (state.currentIndex >= 0 && state.filtered[state.currentIndex]) ? state.filtered[state.currentIndex].name : null;
+    state.filtered = state.allFiles.filter(function (it) {
+      if (tokens.length) {
+        var hay = (it.time + ' ' + it.prn + ' ' + it.name).toLowerCase();
+        if (!tokens.every(function (t) { return hay.indexOf(t) !== -1; })) return false;
+      }
+      if (gActive) {
+        if (it.lat == null || it.lon == null) return false; // not yet indexed / no location
+        if (g.latMin != null && it.lat < g.latMin) return false;
+        if (g.latMax != null && it.lat > g.latMax) return false;
+        if (g.lonMin != null && it.lon < g.lonMin) return false;
+        if (g.lonMax != null && it.lon > g.lonMax) return false;
+      }
+      return true;
+    });
+    updateCount();
+    var newIdx = -1;
+    if (keepSel && prevName) {
+      for (var i = 0; i < state.filtered.length; i++) if (state.filtered[i].name === prevName) { newIdx = i; break; }
+    }
+    if (newIdx >= 0) { state.currentIndex = newIdx; renderFileList(); updateNav(); }
+    else {
+      state.currentIndex = -1;
+      renderFileList();
+      if (state.filtered.length) selectIndex(0); else els.statline.textContent = '';
+      updateNav();
+    }
+  }
+
   // ---------- File list ----------
   function renderFileList() {
     var frag = document.createDocumentFragment();
@@ -107,6 +216,8 @@
       var div = document.createElement('div');
       div.className = 'file-item' + (idx === state.currentIndex ? ' active' : '');
       div.dataset.idx = idx;
+      var loc = (it.lat != null && it.lon != null) ? (it.lat.toFixed(2) + '°, ' + it.lon.toFixed(2) + '°') : '';
+      div.title = it.name + (loc ? '\n' + loc : '');
       div.innerHTML = '<span class="ftime">' + (it.time || it.name) + '</span>' +
                       '<span class="fsat">' + (it.prn || '') + '</span>';
       frag.appendChild(div);
@@ -121,20 +232,13 @@
     selectIndex(parseInt(item.dataset.idx, 10));
   });
 
-  els.filterBox.addEventListener('input', function () {
-    var q = els.filterBox.value.trim().toLowerCase();
-    if (!q) state.filtered = state.allFiles.slice();
-    else {
-      state.filtered = state.allFiles.filter(function (it) {
-        var hay = (it.time + ' ' + it.prn + ' ' + it.name).toLowerCase();
-        return q.split(/\s+/).every(function (tok) { return hay.indexOf(tok) !== -1; });
-      });
-    }
-    state.currentIndex = -1;
-    renderFileList();
-    if (state.filtered.length) selectIndex(0);
-    else { els.statline.textContent = ''; }
-    updateNav();
+  els.filterBox.addEventListener('input', function () { applyFilter(true); });
+  [els.latMin, els.latMax, els.lonMin, els.lonMax].forEach(function (el) {
+    el.addEventListener('input', function () { applyFilter(true); });
+  });
+  els.geoClear.addEventListener('click', function () {
+    [els.latMin, els.latMax, els.lonMin, els.lonMax].forEach(function (i) { i.value = ''; });
+    applyFilter(true);
   });
 
   els.prevBtn.addEventListener('click', function () { if (state.currentIndex > 0) selectIndex(state.currentIndex - 1); });
@@ -214,22 +318,53 @@
 
   // ---------- Render dispatch ----------
   function render() {
-    if (!state.raw) return;
     var v = state.view;
-    var isPlot = (v !== 'meta' && v !== 'table');
+    var hasData = !!state.raw;
+    var isPlot = hasData && v !== 'meta' && v !== 'table' && v !== 'about';
+    els.welcome.classList.toggle('hidden', hasData || v === 'about');
+    els.viewHost.classList.toggle('hidden', !hasData && v !== 'about');
     els.plot.classList.toggle('hidden', !isPlot);
-    els.tableWrap.classList.toggle('hidden', v !== 'table');
-    els.metaGrid.classList.toggle('hidden', v !== 'meta');
+    els.compareList.classList.toggle('hidden', v !== 'compare');
+    els.tableWrap.classList.toggle('hidden', !(v === 'table' && hasData));
+    els.metaGrid.classList.toggle('hidden', !(v === 'meta' && hasData));
+    els.aboutPanel.classList.toggle('hidden', v !== 'about');
+    els.exportbar.classList.toggle('hidden', v === 'about');
     els.dlImgBtn.disabled = !isPlot;
-    els.exportHint.textContent = 'File: ' + state.stamp;
+    els.dlXlsxBtn.disabled = !hasData;
+    els.dlCsvBtn.disabled = !hasData;
+    els.exportHint.textContent = hasData ? ('File: ' + state.stamp) : '';
 
+    if (v === 'about') { renderAbout(); return; }
+    if (!hasData) return;
     if (v === 'edens') renderEdens();
     else if (v === 'tec') renderTec();
     else if (v === 'latlon') renderLatLon();
     else if (v === 'azi') renderAzi();
     else if (v === 'geo') renderGeo();
+    else if (v === 'compare') renderCompare();
     else if (v === 'meta') renderMeta();
     else if (v === 'table') renderTable();
+  }
+
+  function renderAbout() {
+    setControls('');
+    els.statline.textContent = '';
+    els.aboutPanel.innerHTML =
+      '<div class="welcome" style="margin:10px 0">' +
+      '<h2>COSMIC ionPrf Profile Viewer</h2>' +
+      '<p>An interactive, offline viewer and export tool for COSMIC GPS radio-occultation ' +
+      'ionospheric profiles (UCAR/CDAAC <code>ionPrf</code>, NetCDF-3): electron density, ' +
+      'calibrated TEC, perigee-point geolocation and occultation azimuth — with ' +
+      'publication-quality figure export (PNG/JPG at 300/600/1000&nbsp;DPI) and data export ' +
+      'to Excel/CSV. Everything runs locally in your browser.</p>' +
+      '<table class="about-table">' +
+      '<tr><td>Author</td><td class="author"><strong>Sankar Jyoti Nath</strong></td></tr>' +
+      '<tr><td>Repository</td><td><a href="https://github.com/SankarJNath/COSMIC-ionPrf-Profile-Viewer" target="_blank" rel="noopener">github.com/SankarJNath/COSMIC-ionPrf-Profile-Viewer</a></td></tr>' +
+      '<tr><td>Data source</td><td>UCAR / CDAAC — <a href="https://cdaac-www.cosmic.ucar.edu/" target="_blank" rel="noopener">cdaac-www.cosmic.ucar.edu</a></td></tr>' +
+      '<tr><td>Version</td><td>1.0</td></tr>' +
+      '</table>' +
+      '<p class="muted">Independent tool, not affiliated with or endorsed by UCAR/CDAAC.</p>' +
+      '</div>';
   }
 
   function layout(title, xtitle, ytitle, extra) {
@@ -401,6 +536,128 @@
     Plotly.react(els.plot, traces, lay, PLOT_CONFIG);
     els.statline.textContent = 'start (' + fmt(lat[0], 3) + '°, ' + fmt(lon[0], 3) + '°)  →  end (' +
       fmt(lat[lat.length - 1], 3) + '°, ' + fmt(lon[lon.length - 1], 3) + '°)';
+  }
+
+  // ----- Compare / overlay multiple profiles -----
+  function maskedArr(src) { var o = new Float64Array(src.length); for (var i = 0; i < src.length; i++) o[i] = isFill(src[i]) ? NaN : src[i]; return o; }
+  function profileFromNc(nc) {
+    return { alt: maskedArr(nc.getData('MSL_alt')), ed: maskedArr(nc.getData('ELEC_dens')), tec: maskedArr(nc.getData('TEC_cal')) };
+  }
+  function compareLabel(e) {
+    var loc = '';
+    if (e.lat != null && e.lon != null) {
+      loc = Math.abs(e.lat).toFixed(1) + (e.lat >= 0 ? '°N' : '°S') + ' ' +
+            Math.abs(e.lon).toFixed(1) + (e.lon >= 0 ? '°E' : '°W');
+    }
+    var when = e.time ? ('(' + e.time + (e.prn ? ' ' + e.prn : '') + ')') : e.name;
+    return (loc ? loc + ' ' : '') + when;
+  }
+  var cmpTimer = null;
+  function scheduleCompareRefresh() {
+    if (cmpTimer) return;
+    cmpTimer = setTimeout(function () { cmpTimer = null; if (state.view === 'compare') renderCompare(); }, 70);
+  }
+  function addToCompare(item) {
+    if (!item || state.compare.some(function (e) { return e.name === item.name; })) return;
+    var entry = { name: item.name, file: item.file, time: item.time, prn: item.prn,
+                  lat: item.lat, lon: item.lon, color: PALETTE[state.compare.length % PALETTE.length],
+                  data: null, attrs: null, label: '' };
+    entry.label = compareLabel(entry);
+    state.compare.push(entry);
+    item.file.arrayBuffer().then(function (ab) {
+      var nc = NetCDF3.parse(ab);
+      entry.data = profileFromNc(nc);
+      entry.attrs = nc.attributes;
+      if (entry.lat == null) entry.lat = pick([nc.attributes.edmaxlat, nc.attributes.botlat, nc.attributes.toplat], validLat);
+      if (entry.lon == null) entry.lon = pick([nc.attributes.edmaxlon, nc.attributes.botlon, nc.attributes.toplon], validLon);
+      entry.label = compareLabel(entry);
+      scheduleCompareRefresh();
+    }, function () { scheduleCompareRefresh(); });
+  }
+  function addCurrentToCompare() {
+    if (state.currentIndex >= 0) { addToCompare(state.filtered[state.currentIndex]); renderCompare(); }
+  }
+  function addAllFiltered() {
+    if (state.filtered.length > 50) {
+      alert('That is ' + state.filtered.length + ' profiles — too many to overlay legibly.\nNarrow the list (lat/lon or text filter) to 50 or fewer first.');
+      return;
+    }
+    state.filtered.forEach(addToCompare);
+    renderCompare();
+  }
+  function clearCompare() { state.compare = []; renderCompare(); }
+
+  function renderCompare() {
+    state.baseW = 780; state.baseH = 600;
+    var o = state.opts;
+    setControls(
+      '<div class="group"><label>Variable</label>' +
+      '<select id="cmpVar"><option value="ed">Electron density</option><option value="tec">TEC</option></select></div>' +
+      '<div class="group"><label>X scale</label>' +
+      '<select id="cmpScale"><option value="linear">Linear</option><option value="log">Log</option></select></div>' +
+      '<button id="cmpAdd" class="cmp-btn">+ Add current</button>' +
+      '<button id="cmpAddAll" class="cmp-btn">+ Add all filtered (' + state.filtered.length + ')</button>' +
+      '<button id="cmpClear" class="cmp-btn">Clear all</button>');
+    $('cmpVar').value = o.cmpVar; $('cmpScale').value = o.cmpScale;
+    $('cmpVar').addEventListener('change', function () { o.cmpVar = this.value; renderCompare(); });
+    $('cmpScale').addEventListener('change', function () { o.cmpScale = this.value; renderCompare(); });
+    $('cmpAdd').addEventListener('click', addCurrentToCompare);
+    $('cmpAddAll').addEventListener('click', addAllFiltered);
+    $('cmpClear').addEventListener('click', clearCompare);
+
+    var vkey = o.cmpVar;
+    var vlabel = vkey === 'ed' ? 'Electron density (el/cm³)' : 'TEC (TECU)';
+    var traces = state.compare.filter(function (e) { return e.data; }).map(function (e) {
+      var x = e.data[vkey];
+      if (vkey === 'ed') { // hide non-physical (<=0) densities so the overlay stays readable
+        var m = new Float64Array(x.length);
+        for (var k = 0; k < x.length; k++) m[k] = x[k] > 0 ? x[k] : NaN;
+        x = m;
+      }
+      return { x: x, y: e.data.alt, mode: 'lines', type: 'scatter', name: e.label,
+               line: { color: e.color, width: 1.5 },
+               hovertemplate: '%{x:.3s}<br>%{y:.1f} km<extra>' + e.label + '</extra>' };
+    });
+    var day = '';
+    var first = state.compare.find ? state.compare.find(function (e) { return e.attrs; }) : null;
+    if (first && first.attrs) { var a = first.attrs; day = ' — ' + a.year + '-' + pad2(a.month) + '-' + pad2(a.day); }
+    var lay = layout('Overlaid ' + (vkey === 'ed' ? 'Electron-Density' : 'TEC') + ' Profiles' + day, vlabel, 'MSL altitude (km)');
+    if (o.cmpScale === 'log') lay.xaxis.type = 'log';
+    lay.showlegend = true;
+    lay.legend = { x: 0.98, y: 0.02, xanchor: 'right', yanchor: 'bottom',
+                   bgcolor: 'rgba(255,255,255,0.78)', bordercolor: '#ccc', borderwidth: 1, font: { size: 11 } };
+    Plotly.react(els.plot, traces, lay, PLOT_CONFIG);
+
+    if (!state.compare.length) {
+      els.compareList.innerHTML = '<div class="cmp-empty">No profiles added yet. Filter by lat/lon (left), then <strong>Add all filtered</strong> — or pick an occultation and <strong>Add current</strong>. Click a swatch to change its colour.</div>';
+    } else {
+      els.compareList.innerHTML = state.compare.map(function (e, i) {
+        return '<div class="cmp-row">' +
+          '<input type="color" value="' + e.color + '" data-i="' + i + '" title="Choose colour">' +
+          '<span class="cmp-label">' + e.label + (e.data ? '' : ' — loading…') + '</span>' +
+          '<button class="cmp-rm" data-i="' + i + '" title="Remove">&times;</button></div>';
+      }).join('');
+    }
+    els.statline.textContent = state.compare.length + ' profile(s) overlaid' +
+      (state.compare.length ? '  —  colour swatches below are editable' : '') +
+      (state.compare.length && vkey === 'ed' ? '  ·  non-positive Ne hidden' : '');
+  }
+
+  // Colour change / removal (delegated; list DOM is rebuilt on structural change)
+  els.compareList.addEventListener('input', function (e) {
+    if (e.target.type === 'color') {
+      var i = parseInt(e.target.dataset.i, 10);
+      if (state.compare[i]) { state.compare[i].color = e.target.value; recolorCompare(); }
+    }
+  });
+  els.compareList.addEventListener('click', function (e) {
+    var rm = e.target.closest('.cmp-rm');
+    if (rm) { state.compare.splice(parseInt(rm.dataset.i, 10), 1); renderCompare(); }
+  });
+  function recolorCompare() {
+    // update line colours in place without rebuilding the list (keeps picker open)
+    var colors = state.compare.filter(function (e) { return e.data; }).map(function (e) { return e.color; });
+    Plotly.restyle(els.plot, { 'line.color': colors });
   }
 
   // ----- Metadata -----
